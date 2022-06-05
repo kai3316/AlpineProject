@@ -125,7 +125,8 @@ class MultiLabelRGBataSet(torch.utils.data.Dataset):
 
 trans = transforms.Compose(([
     # transforms.Resize((224,224)),
-    transforms.ToTensor()  # divides by 255
+    transforms.ToTensor(),  # divides by 255
+    transforms.Normalize([0.4328, 0.4387, 0.4203], [0.2046, 0.2025, 0.2172])
 ]))
 
 # alist = os.listdir('/home/apline/Desktop/Data/RGB/Images/Labeled/')
