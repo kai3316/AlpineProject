@@ -4,20 +4,27 @@ import os
 from sklearn.model_selection import train_test_split
 
 
-def maketxt(data_dir, train_txt, test_txt):
+def divideImg(data_dir, train_dir, test_dir):
     alist = os.listdir(data_dir)
     x_train, x_test = train_test_split(alist, test_size=0.3, random_state=2)
-    # 写入train.txt
-    with open(train_txt, 'w') as f:
-        for i in x_train:
-            f.write(i[:-4] + '\n')
-    # 写入test.txt
-    with open(test_txt, 'w') as f:
-        for i in x_test:
-            f.write(i[:-4] + '\n')
+    # copu all the train images into train_dir
+    for i in x_train:
+        src = os.path.join(data_dir, i)
+        dst = os.path.join(train_dir, i)
+        os.system('cp ' + src + ' ' + dst)
+    # copy all the test images into test_dir
+    for i in x_test:
+        src = os.path.join(data_dir, i)
+        dst = os.path.join(test_dir, i)
+        os.system('cp ' + src + ' ' + dst)
 
 
-data_dir = '/home/kai/Desktop/RGB/'
-train_txt = '/home/kai/Desktop/train.txt'
-test_txt = '/home/kai/Desktop/test.txt'
-maketxt(data_dir, train_txt, test_txt)
+data_dir = '/home/kai/Desktop/data_noflip/RGB_noflip/'
+train_dir = '/home/kai/Desktop/data_noflip/trainRGB/'
+test_dir = '/home/kai/Desktop/data_noflip/testRGB/'
+# create train_dir and test_dir
+if not os.path.exists(train_dir):
+    os.mkdir(train_dir)
+if not os.path.exists(test_dir):
+    os.mkdir(test_dir)
+divideImg(data_dir, train_dir, test_dir)

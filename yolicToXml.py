@@ -43,10 +43,10 @@ def create_tree(image_name, h, w):
 
 
 # read all files in the folder:
-label_dir = "/home/kai/Desktop/yoliclabel/"
-image_dir = "/home/kai/Desktop/RGB/"
+label_dir = "/home/kai/Desktop/data_noflip/label_noflip/"
+image_dir = "/home/kai/Desktop/data_noflip/RGB_noflip/"
 # create a new folder to store the xml files
-xml_dir = "/home/kai/Desktop/yolic_xml/"
+xml_dir = "/home/kai/Desktop/data_noflip/yolic_xml/"
 if not os.path.exists(xml_dir):
     os.mkdir(xml_dir)
 image_height = 480

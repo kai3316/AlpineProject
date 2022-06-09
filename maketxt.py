@@ -17,7 +17,8 @@ def maketxt(data_dir, train_txt, test_txt):
             f.write(i[:-4] + '\n')
 
 
-data_dir = '/home/kai/Desktop/RGB/'
-train_txt = '/home/kai/Desktop/train.txt'
-test_txt = '/home/kai/Desktop/test.txt'
+data_dir = '/home/kai/Desktop/data_noflip/RGB_noflip/'
+train_txt = '/home/kai/Desktop/data_noflip/train.txt'
+test_txt = '/home/kai/Desktop/data_noflip/test.txt'
 maketxt(data_dir, train_txt, test_txt)
+print('done')
