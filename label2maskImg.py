@@ -3,8 +3,8 @@ import os
 import numpy as np
 import cv2
 
-label_dir = '/media/kai/2TSSD/34294/yoliclabel'
-mask_dir = '/home/kai/Desktop/yolicmask'
+label_dir = '/home/kai/Desktop/data_noflip/label_noflip'
+mask_dir = '/home/kai/Desktop/data_noflip/yolicmask'
 
 os.makedirs(mask_dir, exist_ok=True)
 
@@ -87,6 +87,7 @@ for label in labels_list:
     labelPath = os.path.join(label_dir, label)
     (filename, extension) = os.path.splitext(label)
     annotations = np.loadtxt(labelPath, dtype=np.int64)
+    print(filename)
     cell = 0
     img = np.zeros((12, 480, 848), dtype=np.uint8)
     for i in range(0, 1248, 12):

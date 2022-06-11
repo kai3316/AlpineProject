@@ -30,12 +30,15 @@ import os
 from torch.cuda.amp import autocast as autocast
 from torch.cuda.amp import GradScaler as GradScaler
 
+from mobilenext import MobileNeXt
+from moblienet_new import mobilenet_v2
+
 parser = argparse.ArgumentParser(description='PyTorch Example')
-parser.add_argument('--batch_size', type=int, default=64, metavar='N',
+parser.add_argument('--batch_size', type=int, default=32, metavar='N',
                     help='input batch size for training (default: 64)')
-parser.add_argument('--test_batch', type=int, default=64, metavar='N',
+parser.add_argument('--test_batch', type=int, default=32, metavar='N',
                     help='input batch size for testing (default: 64)')
-parser.add_argument('--epochs', type=int, default=1, metavar='N',
+parser.add_argument('--epochs', type=int, default=150, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--lr', type=float, default=0.5, metavar='LR',
                     help='learning rate (default: 0.1)')
@@ -113,18 +116,31 @@ class MultiLabelRGBataSet(torch.utils.data.Dataset):
     def __getitem__(self, index):
         ipath = os.path.join(self.imgspath, self.imgslist[index])
         img = Image.open(ipath)
+        # flip the image horizontally with probability 0.5
+        (filename, extension) = os.path.splitext(ipath)
+        filename = os.path.basename(filename)
+        if np.random.random() > 0.5:
+            img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            # if file exists open it
+
+            if os.path.exists(os.path.join("/home/kai/Desktop/data_flip/yoliclabel", filename + "0.txt")):
+                label = np.loadtxt(os.path.join("/home/kai/Desktop/data_flip/yoliclabel", filename + "0.txt"),
+                                   dtype=np.int64)
+            else:
+                label = np.loadtxt(os.path.join("/home/kai/Desktop/data_flip/yoliclabel", filename + "new.txt"),
+                                   dtype=np.int64)
+        else:
+            annotation = os.path.join(self.annotationpath, filename + ".txt")
+            label = np.loadtxt(annotation, dtype=np.int64)
         # print(ipath)
         if self.transform is not None:
             img = self.transform(img)
-        (filename, extension) = os.path.splitext(ipath)
-        filename = os.path.basename(filename)
-        annotation = os.path.join(self.annotationpath, filename + ".txt")
-        label = np.loadtxt(annotation, dtype=np.int64)
+
         return img, label, filename
 
 
 trans = transforms.Compose(([
-    # transforms.Resize((224,224)),
+    transforms.Resize((224, 224)),
     transforms.ToTensor(),  # divides by 255
     transforms.Normalize([0.4328, 0.4387, 0.4203], [0.2046, 0.2025, 0.2172])
 ]))
@@ -135,24 +151,22 @@ trans = transforms.Compose(([
 # depthdir = r'C:\Users\3090\Desktop\34294\Depth'
 # labeldir = r'C:\Users\3090\Desktop\34294\yoliclabel'
 
-rgb_dir = '/home/kai/Desktop/RGB'
-depth_dir = '/home/kai/Desktop/Depth'
-label_dir = '/home/kai/Desktop/yoliclabel'
+rgb_dir = '/home/kai/Desktop/data_noflip/RGB_noflip'
+# depth_dir = '/home/kai/Desktop/Depth'
+label_dir = '/home/kai/Desktop/data_noflip/label_noflip'
 
 alist = os.listdir(rgb_dir)
 x_train, x_test = train_test_split(alist, test_size=0.3, random_state=2)
 
-# train = MultiLabelRGBDataSet(r'D:\23308\RGB',
-#                           x_train,r'D:\23308\yoliclabel',trans)
+train = MultiLabelRGBataSet(rgb_dir, x_train, label_dir, trans)
 
-# test = MultiLabelRGBDataSet(r'D:\23308\RGB',
-#                           x_test,r'D:\23308\yoliclabel',trans)
+test = MultiLabelRGBataSet(rgb_dir, x_test, label_dir, trans)
 
-train = MultiLabelDataSet(rgb_dir, depth_dir,
-                          x_train, label_dir, trans, 1)
-
-test = MultiLabelDataSet(rgb_dir, depth_dir,
-                         x_test, label_dir, trans, 0)
+# train = MultiLabelDataSet(rgb_dir, depth_dir,
+#                           x_train, label_dir, trans, 1)
+#
+# test = MultiLabelDataSet(rgb_dir, depth_dir,
+#                          x_test, label_dir, trans, 0)
 
 # x_train ,x_test = train_test_split(rgbimage.imgs,test_size=0.3,random_state=1) 
 
@@ -199,10 +213,15 @@ test_loader = torch.utils.data.DataLoader(test,
 # from convnext import *
 # model = convnext_large()
 # print(model)
-model = models.mobilenet_v2()
-model.classifier[1] = nn.Linear(1280, 1248)
-model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'mobilenet_v2_new_time'
+import torchvision.models as models
+
+# model = mobilenet_v2()  # resnet.resnet18()#
+# model = models.mobilenet_v2()
+model = MobileNeXt(num_classes=1248, width_mult=1.0, identity_tensor_multiplier=1.0)
+# model = mobilenet_v2()
+# model.classifier[1] = nn.Linear(1280, 1248)
+# model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+save_name = 'mobilenext_withNoFlipData'
 # print(model)
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)
@@ -220,7 +239,6 @@ save_name = 'mobilenet_v2_new_time'
 # teacher = VGG16()
 
 # model = torch.nn.DataParallel(model)
-
 
 
 # model.module.fc=nn.Linear(2048,968)
@@ -355,7 +373,7 @@ def test(model):
     running_loss = []
     running_acc = []
 
-    running_acc5 = []
+    running_acc2 = []
     global best_correct
     for batch_idx, (data, target, filenames) in enumerate(test_loader):
         if args.cuda:
@@ -379,7 +397,7 @@ def test(model):
         running_acc2.append(np.asarray(acc_2).mean())
     total_loss = np.asarray(running_loss).mean()
     total_acc = np.asarray(running_acc).mean()
-    total_acc2 = np.asarray(running_acc5).mean()
+    total_acc2 = np.asarray(running_acc2).mean()
     print('\nTest set: total_batch_loss: {:.4f}, total imgs: {} , Acc: ({:.4f}%), 2classAcc: ({:.4f}%)\n'.format(
         total_loss, len(test_loader.dataset), total_acc, total_acc2))
     # now_correct = total_batch_acc
@@ -394,6 +412,7 @@ def test(model):
 if __name__ == '__main__':
     # freeze_support()
     import datetime
+
     start_time = datetime.datetime.now()
     all_train_loss = []
     all_train_acc = []
