@@ -12,6 +12,66 @@ from typing import Callable, Any, Optional, List
 from torch.hub import load_state_dict_from_url
 
 
+class h_sigmoid(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_sigmoid, self).__init__()
+        self.relu = nn.ReLU6(inplace=inplace)
+
+    def forward(self, x):
+        return self.relu(x + 3) / 6
+
+
+class h_swish(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_swish, self).__init__()
+        self.sigmoid = h_sigmoid(inplace=inplace)
+
+    def forward(self, x):
+        return x * self.sigmoid(x)
+
+
+class swish(nn.Module):
+    def forward(self, x):
+        return x * torch.sigmoid(x)
+
+
+class CoordAtt(nn.Module):
+    def __init__(self, inp, oup, groups=32):
+        super(CoordAtt, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // groups)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.conv2 = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        self.conv3 = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        self.relu = h_swish()
+
+    def forward(self, x):
+        identity = x
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.relu(y)
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        x_h = self.conv2(x_h).sigmoid()
+        x_w = self.conv3(x_w).sigmoid()
+        x_h = x_h.expand(-1, -1, h, w)
+        x_w = x_w.expand(-1, -1, h, w)
+
+        y = identity * x_w * x_h
+
+        return y
+
+
 class ConvNormActivation(torch.nn.Sequential):
     def __init__(
             self,
@@ -108,6 +168,7 @@ class InvertedResidual(nn.Module):
                 nn.Conv2d(inp, hidden_dim, kernel_size=1, stride=1, padding=0, groups=1, bias=False),
                 # norm_layer(num_channels, hidden_dim),
             ])
+        layers.extend([CoordAtt(hidden_dim, hidden_dim)])
         layers.extend([
             # pw
             ConvBNReLU(hidden_dim, oup, kernel_size=1, stride=1, groups=1, norm_layer=norm_layer),
@@ -166,16 +227,16 @@ class MobileNetV2(nn.Module):
         if norm_layer is None:
             norm_layer = nn.GroupNorm
 
-        input_channel = 16
+        input_channel = 96
         last_channel = 12
 
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s, k
-                [2, 96, 2, 1, 3],
-                [6, 192, 3, 1, 3],
-                [6, 384, 4, 1, 3],
-                [6, 960, 2, 1, 3],
+                [2, 128, 2, 1, 7],
+                [4, 256, 3, 2, 7],
+                [4, 512, 4, 2, 7],
+                [4, 1024, 2, 1, 7],
             ]
         # [2, 96, 1, 2],
         # [6, 144, 1, 1],
@@ -194,11 +255,11 @@ class MobileNetV2(nn.Module):
         self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
         stem: List[nn.Module] = [ConvNormActivation(3, input_channel, stride=4, norm_layer=norm_layer, kernel_size=4,
                                                     activation_layer=nn.GELU)]
-        self.stem = nn.ModuleList([
-            ConvNormActivation(in_channels=input_channel, out_channels=3, kernel_size=3, stride=2, padding=1, groups=1),
-            ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=1, padding=1, groups=3),
-            ConvNormActivation(in_channels=3, out_channels=3, kernel_size=1, stride=1, padding=0, groups=1),
-            ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=2, padding=1, groups=3)])
+        # self.stem = nn.ModuleList([
+        #     ConvNormActivation(in_channels=input_channel, out_channels=3, kernel_size=3, stride=2, padding=1, groups=1),
+        #     ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=1, padding=1, groups=3),
+        #     ConvNormActivation(in_channels=3, out_channels=3, kernel_size=1, stride=1, padding=0, groups=1),
+        #     ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=2, padding=1, groups=3)])
         self.stem = nn.Sequential(*stem)
 
         block1: List[nn.Module] = []
@@ -281,6 +342,8 @@ class MobileNetV2(nn.Module):
         x = self.block2(x)
         x = self.block3(x)
         x = self.block4(x)
+        #resize x to the original size
+        x = torch.nn.functional.interpolate(x, (58,58), mode='bilinear', align_corners=True)
         # print(x.shape)
         x = self.last(x)
         # print(x.shape)

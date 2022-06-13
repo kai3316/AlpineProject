@@ -12,7 +12,6 @@ import argparse
 import numpy as np
 import torch
 import torchvision
-from torch.optim import lr_scheduler
 from torchvision import models
 from torchvision import transforms, datasets
 import torch.nn.functional as F
@@ -31,8 +30,6 @@ import os
 from torch.cuda.amp import autocast as autocast
 from torch.cuda.amp import GradScaler as GradScaler
 
-from AsymmetricLoss import AsymmetricLoss
-from mbv2_ca import MBV2_CA
 from mobilenext import MobileNeXt
 from moblienet_new import mobilenet_v2
 
@@ -41,9 +38,9 @@ parser.add_argument('--batch_size', type=int, default=32, metavar='N',
                     help='input batch size for training (default: 64)')
 parser.add_argument('--test_batch', type=int, default=32, metavar='N',
                     help='input batch size for testing (default: 64)')
-parser.add_argument('--epochs', type=int, default=300, metavar='N',
+parser.add_argument('--epochs', type=int, default=200, metavar='N',
                     help='number of epochs to train (default: 10)')
-parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
+parser.add_argument('--lr', type=float, default=0.5, metavar='LR',
                     help='learning rate (default: 0.1)')
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                     help='SGD momentum (default: 0.5)')
@@ -65,44 +62,44 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
 
-class MultiLabelDataSet(torch.utils.data.Dataset):
-    def __init__(self, imgspath, dpath, imgslist, annotationpath, transforms=None, mode=0):
-        self.imgslist = imgslist
-        self.imgspath = imgspath
-        self.dpath = dpath
-        self.transform = transforms
-        self.annotationpath = annotationpath
-        self.mode = mode
-        # print(annotationpath)
-
-    def __len__(self):
-        return len(self.imgslist)
-
-    def __getitem__(self, index):
-        ipath = os.path.join(self.imgspath, self.imgslist[index])
-        dpath = os.path.join(self.dpath, self.imgslist[index])
-        color_image = cv2.imread(ipath)
-        depth_image = cv2.imread(dpath)
-        d, d, d = cv2.split(depth_image)
-        if self.mode == 1:
-            rgbtrans = transforms.Compose(
-                ([transforms.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2, hue=0.1)]))
-            color_image = Image.fromarray(color_image)
-            color_image = rgbtrans(color_image)
-            color_image = np.asarray(color_image)
-        b, g, r = cv2.split(color_image)
-        img = cv2.merge([r, g, b, d])
-        img = cv2.resize(img, (224, 224))
-        # print(ipath)
-        if self.transform is not None:
-            img = self.transform(img)
-        (filename, extension) = os.path.splitext(ipath)
-        filename = os.path.basename(filename)
-        annotation = os.path.join(self.annotationpath, filename + ".txt")
-        label = np.loadtxt(annotation, dtype=np.int64)
-        # if(len(label) != 1248):
-        #     print(filename)
-        return img, label, filename
+# class MultiLabelDataSet(torch.utils.data.Dataset):
+#     def __init__(self, imgspath, dpath, imgslist, annotationpath, transforms=None, mode=0):
+#         self.imgslist = imgslist
+#         self.imgspath = imgspath
+#         self.dpath = dpath
+#         self.transform = transforms
+#         self.annotationpath = annotationpath
+#         self.mode = mode
+#         # print(annotationpath)
+#
+#     def __len__(self):
+#         return len(self.imgslist)
+#
+#     def __getitem__(self, index):
+#         ipath = os.path.join(self.imgspath, self.imgslist[index])
+#         dpath = os.path.join(self.dpath, self.imgslist[index])
+#         color_image = cv2.imread(ipath)
+#         depth_image = cv2.imread(dpath)
+#         d, d, d = cv2.split(depth_image)
+#         if self.mode == 1:
+#             rgbtrans = transforms.Compose(
+#                 ([transforms.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2, hue=0.1)]))
+#             color_image = Image.fromarray(color_image)
+#             color_image = rgbtrans(color_image)
+#             color_image = np.asarray(color_image)
+#         b, g, r = cv2.split(color_image)
+#         img = cv2.merge([r, g, b, d])
+#         img = cv2.resize(img, (224, 224))
+#         # print(ipath)
+#         if self.transform is not None:
+#             img = self.transform(img)
+#         (filename, extension) = os.path.splitext(ipath)
+#         filename = os.path.basename(filename)
+#         annotation = os.path.join(self.annotationpath, filename + ".txt")
+#         label = np.loadtxt(annotation, dtype=np.int64)
+#         # if(len(label) != 1248):
+#         #     print(filename)
+#         return img, label, filename
 
 
 class MultiLabelRGBataSet(torch.utils.data.Dataset):
@@ -122,24 +119,23 @@ class MultiLabelRGBataSet(torch.utils.data.Dataset):
         # flip the image horizontally with probability 0.5
         (filename, extension) = os.path.splitext(ipath)
         filename = os.path.basename(filename)
+        annotation = os.path.join(self.annotationpath, filename + ".npy")
+        labelimg = np.load(annotation)
+        # numpy to tensor
+        # labelimg = torch.from_numpy(labelimg)
+        # resize the labelimg(12,480,848) to (12,56, 56)
+
+        # print(labelimg.shape)
         if np.random.random() > 0.5:
             img = img.transpose(Image.FLIP_LEFT_RIGHT)
-            # if file exists open it
+            labelimg = np.fliplr(labelimg).copy()
+            # print(labelimg.shape)
 
-            if os.path.exists(os.path.join("/home/kai/Desktop/data_flip/yoliclabel", filename + "0.txt")):
-                label = np.loadtxt(os.path.join("/home/kai/Desktop/data_flip/yoliclabel", filename + "0.txt"),
-                                   dtype=np.int64)
-            else:
-                label = np.loadtxt(os.path.join("/home/kai/Desktop/data_flip/yoliclabel", filename + "new.txt"),
-                                   dtype=np.int64)
-        else:
-            annotation = os.path.join(self.annotationpath, filename + ".txt")
-            label = np.loadtxt(annotation, dtype=np.int64)
         # print(ipath)
         if self.transform is not None:
             img = self.transform(img)
-
-        return img, label, filename
+        # print(labelimg.shape, img.shape)
+        return img, labelimg, filename
 
 
 trans = transforms.Compose(([
@@ -156,7 +152,7 @@ trans = transforms.Compose(([
 
 rgb_dir = '/home/kai/Desktop/data_noflip/RGB_noflip'
 # depth_dir = '/home/kai/Desktop/Depth'
-label_dir = '/home/kai/Desktop/data_noflip/label_noflip'
+label_dir = '/home/kai/Desktop/data_noflip/yolicmask'
 
 alist = os.listdir(rgb_dir)
 x_train, x_test = train_test_split(alist, test_size=0.3, random_state=2)
@@ -171,20 +167,19 @@ test = MultiLabelRGBataSet(rgb_dir, x_test, label_dir, trans)
 # test = MultiLabelDataSet(rgb_dir, depth_dir,
 #                          x_test, label_dir, trans, 0)
 
-# x_train ,x_test = train_test_split(rgbimage.imgs,test_size=0.3,random_state=1) 
+# x_train ,x_test = train_test_split(rgbimage.imgs,test_size=0.3,random_state=1)
 
 # train = RealsenseDataSet(x_train,val_trans)
 
 # test = RealsenseDataSet(x_test,val_trans)
 train_loader = torch.utils.data.DataLoader(train,
                                            batch_size=args.batch_size,
-                                           shuffle=True, num_workers=16)
+                                           shuffle=True, num_workers=8)
 
 test_loader = torch.utils.data.DataLoader(test,
                                           batch_size=args.test_batch,
-                                          shuffle=False, num_workers=16)
+                                          shuffle=False, num_workers=8)
 
-steps_per_epoch = len(train_loader)
 # (data, target) =iter(train_loader).next()
 # exit()
 # from resnet import resnet20, resnet56
@@ -219,15 +214,13 @@ steps_per_epoch = len(train_loader)
 # print(model)
 import torchvision.models as models
 
-# model = mobilenet_v2()  # resnet.resnet18()#
+model = mobilenet_v2()  # resnet.resnet18()#
 # model = models.mobilenet_v2()
-model = MBV2_CA()
 # model = MobileNeXt(num_classes=1248, width_mult=1.0, identity_tensor_multiplier=1.0)
 # model = mobilenet_v2()
-model.classifier[1] = nn.Linear(1280, 1248)
+# model.classifier[1] = nn.Linear(1280, 1248)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'MBV2_CA'
-# criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=0, clip=0.05, eps=1e-8, disable_torch_grad_focal_loss=True)
+save_name = 'mobile_own_withmask2342'
 # print(model)
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)
@@ -252,7 +245,7 @@ save_name = 'MBV2_CA'
 if args.cuda:
     model.cuda()
 
-optimizer = optim.Adam(model.parameters(), lr=args.lr)
+optimizer = optim.Adam(model.parameters())
 # scaler = GradScaler()
 # optimizer = optim.SGD(model.parameters(), lr=0.1)
 # scheduler = StepLR(optimizer,step_size = 50,gamma=0.1)
@@ -264,8 +257,6 @@ optimizer = optim.Adam(model.parameters(), lr=args.lr)
 # criterion = nn.MultiLabelSoftMarginLoss(Weights)
 criterion = nn.MultiLabelSoftMarginLoss()
 
-# scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=steps_per_epoch, epochs=args.epochs,
-#                                         pct_start=0.2)
 # bceloss = torch.nn.BCEWithLogitsLoss(Weights)
 #
 #
@@ -285,8 +276,8 @@ best_correct = -999
 
 
 def pred_acc(original, predicted, errornum):
-    pred = torch.round(predicted).detach().numpy()
-    orig = original.detach().numpy()
+    pred = np.array(predicted)
+    orig = np.array(original)
     num = 0
     enum = 0
     normal = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
@@ -319,7 +310,11 @@ def train(epoch, model, loss_fn):
         optimizer.zero_grad()
         # with autocast():
         output = model(data)
+        # print(output.shape, target.shape)
+        target = torch.nn.functional.interpolate(target, size=(56, 56), mode='nearest')
+
         loss = loss_fn(output, target)
+        # print(loss)
         # loss = F.softmax(output, target)
         # loss = F.cross_entropy(output, target)
         loss.backward()
@@ -327,13 +322,109 @@ def train(epoch, model, loss_fn):
         # scaler.step(optimizer)
         # scaler.update()
         optimizer.step()
-        # scheduler.step()
         # pred = output.data.max(1, keepdim=True)[1]
 
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.10f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                        100. * batch_idx / len(train_loader), loss.item()))
+
+
+points_list = [(288, 166), (322, 166), (356, 166), (390, 166), (424, 166), (458, 166), (492, 166), (526, 166),
+               (220, 200), (254, 200), (288, 200), (322, 200), (356, 200), (390, 200), (424, 200), (458, 200),
+               (492, 200), (526, 200), (560, 200), (594, 200),
+               (220, 234), (254, 234), (288, 234), (322, 234), (356, 234), (390, 234), (424, 234), (458, 234),
+               (492, 234), (526, 234), (560, 234), (594, 234), (628, 234),
+               (254, 268), (288, 268), (322, 268), (356, 268), (390, 268), (424, 268), (458, 268), (492, 268),
+               (526, 268), (560, 268), (594, 268), (628, 268),
+               (0, 268), (53, 268), (106, 268), (159, 268), (212, 268), (265, 268), (318, 268), (371, 268), (424, 268),
+               (477, 268), (530, 268), (583, 268), (636, 268), (689, 268), (742, 268), (795, 268),
+               (0, 321), (53, 321), (106, 321), (159, 321), (212, 321), (265, 321), (318, 321), (371, 321), (424, 321),
+               (477, 321), (530, 321), (583, 321), (636, 321), (689, 321), (742, 321), (795, 321), (848, 321),
+               (0, 374), (53, 374), (106, 374), (159, 374), (212, 374), (265, 374), (318, 374), (371, 374), (424, 374),
+               (477, 374), (530, 374), (583, 374), (636, 374), (689, 374), (742, 374), (795, 374), (848, 374),
+               (0, 427), (53, 427), (106, 427), (159, 427), (212, 427), (265, 427), (318, 427), (371, 427), (424, 427),
+               (477, 427), (530, 427), (583, 427), (636, 427), (689, 427), (742, 427), (795, 427), (848, 427),
+               (0, 480), (53, 480), (106, 480), (159, 480), (212, 480), (265, 480), (318, 480), (371, 480), (424, 480),
+               (477, 480), (530, 480), (583, 480), (636, 480), (689, 480), (742, 480), (795, 480), (848, 480),
+               (184, 0), (244, 0), (304, 0), (364, 0), (424, 0), (484, 0), (544, 0), (604, 0), (244, 60), (304, 60),
+               (364, 60), (424, 60), (484, 60), (544, 60), (604, 60), (664, 60)]
+
+box_list = [[points_list[0], points_list[11]], [points_list[1], points_list[12]], [points_list[2], points_list[13]],
+            [points_list[3], points_list[14]], [points_list[4], points_list[15]],
+            [points_list[5], points_list[16]], [points_list[6], points_list[17]], [points_list[7], points_list[18]],
+            [points_list[8], points_list[21]], [points_list[9], points_list[22]],
+            [points_list[10], points_list[23]], [points_list[11], points_list[24]], [points_list[12], points_list[25]],
+            [points_list[13], points_list[26]], [points_list[14], points_list[27]],
+            [points_list[15], points_list[28]], [points_list[16], points_list[29]], [points_list[17], points_list[30]],
+            [points_list[18], points_list[31]], [points_list[19], points_list[32]],
+            [points_list[20], points_list[33]], [points_list[21], points_list[34]], [points_list[22], points_list[35]],
+            [points_list[23], points_list[36]], [points_list[24], points_list[37]],
+            [points_list[25], points_list[38]], [points_list[26], points_list[39]], [points_list[27], points_list[40]],
+            [points_list[28], points_list[41]], [points_list[29], points_list[42]],
+            [points_list[30], points_list[43]], [points_list[31], points_list[44]], [points_list[45], points_list[62]],
+            [points_list[46], points_list[63]], [points_list[47], points_list[64]],
+            [points_list[48], points_list[65]], [points_list[49], points_list[66]], [points_list[50], points_list[67]],
+            [points_list[51], points_list[68]], [points_list[52], points_list[69]],
+            [points_list[53], points_list[70]], [points_list[54], points_list[71]], [points_list[55], points_list[72]],
+            [points_list[56], points_list[73]], [points_list[57], points_list[74]],
+            [points_list[58], points_list[75]], [points_list[59], points_list[76]], [points_list[60], points_list[77]],
+            [points_list[61], points_list[79]], [points_list[62], points_list[80]],
+            [points_list[63], points_list[81]], [points_list[64], points_list[82]], [points_list[65], points_list[83]],
+            [points_list[66], points_list[84]], [points_list[67], points_list[85]],
+            [points_list[68], points_list[86]], [points_list[69], points_list[87]], [points_list[70], points_list[88]],
+            [points_list[71], points_list[89]], [points_list[72], points_list[90]],
+            [points_list[73], points_list[91]], [points_list[74], points_list[92]], [points_list[75], points_list[93]],
+            [points_list[76], points_list[94]], [points_list[78], points_list[96]],
+            [points_list[79], points_list[97]], [points_list[80], points_list[98]], [points_list[81], points_list[99]],
+            [points_list[82], points_list[100]], [points_list[83], points_list[101]],
+            [points_list[84], points_list[102]], [points_list[85], points_list[103]],
+            [points_list[86], points_list[104]], [points_list[87], points_list[105]],
+            [points_list[88], points_list[106]],
+            [points_list[89], points_list[107]], [points_list[90], points_list[108]],
+            [points_list[91], points_list[109]], [points_list[92], points_list[110]],
+            [points_list[93], points_list[111]],
+            [points_list[95], points_list[113]], [points_list[96], points_list[114]],
+            [points_list[97], points_list[115]], [points_list[98], points_list[116]],
+            [points_list[99], points_list[117]],
+            [points_list[100], points_list[118]], [points_list[101], points_list[119]],
+            [points_list[102], points_list[120]], [points_list[103], points_list[121]],
+            [points_list[104], points_list[122]],
+            [points_list[105], points_list[123]], [points_list[106], points_list[124]],
+            [points_list[107], points_list[125]], [points_list[108], points_list[126]],
+            [points_list[109], points_list[127]],
+            [points_list[110], points_list[128]], [points_list[129], points_list[137]],
+            [points_list[130], points_list[138]], [points_list[131], points_list[139]],
+            [points_list[132], points_list[140]],
+            [points_list[133], points_list[141]], [points_list[134], points_list[142]],
+            [points_list[135], points_list[143]], [points_list[136], points_list[144]]]
+
+# print(len(box_list))
+
+
+def masktoLabel(targetImg, d):
+    targetImg = targetImg.detach().numpy()
+    d = d.detach().numpy()
+    oh, ow = 56, 56
+    targetlist = []
+    dlist = []
+    for box in box_list:
+        # h_min = round(int(box[0][1])/480*h)
+        # w_min = round(int(box[0][0])/848*w)
+        # h_max = round(int(box[1][1])/480*h)
+        # w_max = round(int(box[1][0])/848*w)
+        h = (int(box[0][1]) + int(box[1][1])) / 2
+        w = (int(box[0][0]) + int(box[1][0])) / 2
+        h = round(h / 480 * oh)
+        w = round(w / 848 * ow)
+        # print(h_min, w_min, h_max, w_max)
+        newtarget = targetImg[:, h, w]
+        targetlist.append(newtarget)
+        newd = d[:, h, w]
+        dlist.append(newd)
+    # print(targetlist)
+    return targetlist, dlist
+    # pass
 
 
 def train_evaluate(model):
@@ -346,18 +437,21 @@ def train_evaluate(model):
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
+        target = torch.nn.functional.interpolate(target, size=(56, 56), mode='nearest')
         output = model(data)
         loss = criterion(output, target)
         output = torch.sigmoid(output)
         # print(output)
         acc_ = []
         for i, d in enumerate(output):
-            acc = pred_acc(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d), 0)
+            label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
+            acc = pred_acc(label_target, d, 0)
             acc_.append(acc)
 
         acc_2 = []
         for i, d in enumerate(output):
-            acc = pred_acc(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d), -1)
+            label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
+            acc = pred_acc(label_target, d, -1)
             acc_2.append(acc)
         running_loss.append(loss.item())
         running_acc.append(np.asarray(acc_).mean())
@@ -388,18 +482,21 @@ def test(model):
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
+        target = torch.nn.functional.interpolate(target, size=(56, 56), mode='nearest')
         output = model(data).float()
         loss = criterion(output, target)
         output = torch.sigmoid(output)
 
         acc_ = []
         for i, d in enumerate(output):
-            acc = pred_acc(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d), 0)
+            label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
+            acc = pred_acc(label_target, d, 0)
             acc_.append(acc)
 
         acc_2 = []
         for i, d in enumerate(output):
-            acc = pred_acc(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d), -1)
+            label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
+            acc = pred_acc(label_target, d, -1)
             acc_2.append(acc)
         running_loss.append(loss.item())
         running_acc.append(np.asarray(acc_).mean())
