@@ -32,11 +32,12 @@ from torch.cuda.amp import GradScaler as GradScaler
 
 from mobilenext import MobileNeXt
 from moblienet_new import mobilenet_v2
+from net0613 import mbv2_ca0613
 
 parser = argparse.ArgumentParser(description='PyTorch Example')
-parser.add_argument('--batch_size', type=int, default=32, metavar='N',
+parser.add_argument('--batch_size', type=int, default=64, metavar='N',
                     help='input batch size for training (default: 64)')
-parser.add_argument('--test_batch', type=int, default=32, metavar='N',
+parser.add_argument('--test_batch', type=int, default=64, metavar='N',
                     help='input batch size for testing (default: 64)')
 parser.add_argument('--epochs', type=int, default=200, metavar='N',
                     help='number of epochs to train (default: 10)')
@@ -126,9 +127,9 @@ class MultiLabelRGBataSet(torch.utils.data.Dataset):
         # resize the labelimg(12,480,848) to (12,56, 56)
 
         # print(labelimg.shape)
-        if np.random.random() > 0.5:
-            img = img.transpose(Image.FLIP_LEFT_RIGHT)
-            labelimg = np.fliplr(labelimg).copy()
+        # if np.random.random() > 0.5:
+        #     img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        #     labelimg = np.fliplr(labelimg).copy()
             # print(labelimg.shape)
 
         # print(ipath)
@@ -214,13 +215,15 @@ test_loader = torch.utils.data.DataLoader(test,
 # print(model)
 import torchvision.models as models
 
-model = mobilenet_v2()  # resnet.resnet18()#
+# model = mbv2_ca0613()  # resnet.resnet18()#
+features_map = (28, 28)
+model = mobilenet_v2()
 # model = models.mobilenet_v2()
 # model = MobileNeXt(num_classes=1248, width_mult=1.0, identity_tensor_multiplier=1.0)
 # model = mobilenet_v2()
 # model.classifier[1] = nn.Linear(1280, 1248)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'mobile_own_withmask2342'
+save_name = 'mobile_own_0613'
 # print(model)
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)
@@ -311,7 +314,7 @@ def train(epoch, model, loss_fn):
         # with autocast():
         output = model(data)
         # print(output.shape, target.shape)
-        target = torch.nn.functional.interpolate(target, size=(56, 56), mode='nearest')
+        target = torch.nn.functional.interpolate(target, size=features_map, mode='nearest')
 
         loss = loss_fn(output, target)
         # print(loss)
@@ -405,7 +408,8 @@ box_list = [[points_list[0], points_list[11]], [points_list[1], points_list[12]]
 def masktoLabel(targetImg, d):
     targetImg = targetImg.detach().numpy()
     d = d.detach().numpy()
-    oh, ow = 56, 56
+    oh, ow = features_map
+    # print(oh, ow)
     targetlist = []
     dlist = []
     for box in box_list:
@@ -422,6 +426,7 @@ def masktoLabel(targetImg, d):
         targetlist.append(newtarget)
         newd = d[:, h, w]
         dlist.append(newd)
+    # print(dlist)
     # print(targetlist)
     return targetlist, dlist
     # pass
@@ -437,10 +442,10 @@ def train_evaluate(model):
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        target = torch.nn.functional.interpolate(target, size=(56, 56), mode='nearest')
+        target = torch.nn.functional.interpolate(target, size=features_map, mode='nearest')
         output = model(data)
         loss = criterion(output, target)
-        output = torch.sigmoid(output)
+        output = torch.round(torch.sigmoid(output))
         # print(output)
         acc_ = []
         for i, d in enumerate(output):
@@ -482,10 +487,10 @@ def test(model):
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        target = torch.nn.functional.interpolate(target, size=(56, 56), mode='nearest')
+        target = torch.nn.functional.interpolate(target, size=features_map, mode='nearest')
         output = model(data).float()
         loss = criterion(output, target)
-        output = torch.sigmoid(output)
+        output = torch.round(torch.sigmoid(output))
 
         acc_ = []
         for i, d in enumerate(output):

@@ -166,16 +166,16 @@ class MobileNetV2(nn.Module):
         if norm_layer is None:
             norm_layer = nn.GroupNorm
 
-        input_channel = 16
+        input_channel = 64
         last_channel = 12
 
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s, k
-                [2, 96, 2, 1, 3],
-                [6, 192, 3, 1, 3],
-                [6, 384, 4, 1, 3],
-                [6, 960, 2, 1, 3],
+                [2, 32, 3, 2, 7],
+                [4, 64, 3, 1, 7],
+                [4, 128, 9, 1, 7],
+                [4, 256, 3, 1, 7],
             ]
         # [2, 96, 1, 2],
         # [6, 144, 1, 1],
@@ -194,11 +194,11 @@ class MobileNetV2(nn.Module):
         self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
         stem: List[nn.Module] = [ConvNormActivation(3, input_channel, stride=4, norm_layer=norm_layer, kernel_size=4,
                                                     activation_layer=nn.GELU)]
-        self.stem = nn.ModuleList([
-            ConvNormActivation(in_channels=input_channel, out_channels=3, kernel_size=3, stride=2, padding=1, groups=1),
-            ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=1, padding=1, groups=3),
-            ConvNormActivation(in_channels=3, out_channels=3, kernel_size=1, stride=1, padding=0, groups=1),
-            ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=2, padding=1, groups=3)])
+        # self.stem = nn.ModuleList([
+        #     ConvNormActivation(in_channels=input_channel, out_channels=3, kernel_size=3, stride=2, padding=1, groups=1),
+        #     ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=1, padding=1, groups=3),
+        #     ConvNormActivation(in_channels=3, out_channels=3, kernel_size=1, stride=1, padding=0, groups=1),
+        #     ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=2, padding=1, groups=3)])
         self.stem = nn.Sequential(*stem)
 
         block1: List[nn.Module] = []
