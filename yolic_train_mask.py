@@ -223,7 +223,7 @@ model = mobilenet_v2()
 # model = mobilenet_v2()
 # model.classifier[1] = nn.Linear(1280, 1248)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'mobile_own_0613'
+save_name = 'mobileon_9753'
 # print(model)
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)
