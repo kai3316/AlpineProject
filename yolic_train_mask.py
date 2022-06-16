@@ -30,8 +30,10 @@ import os
 from torch.cuda.amp import autocast as autocast
 from torch.cuda.amp import GradScaler as GradScaler
 
+import moblienet_mask
+import moblienet_new
 from mobilenext import MobileNeXt
-from moblienet_new import mobilenet_v2
+from ownTiny0615 import mobilenet_v2
 from net0613 import mbv2_ca0613
 
 parser = argparse.ArgumentParser(description='PyTorch Example')
@@ -217,13 +219,15 @@ import torchvision.models as models
 
 # model = mbv2_ca0613()  # resnet.resnet18()#
 features_map = (28, 28)
-model = mobilenet_v2()
+model = moblienet_new.mobilenet_v2()
+# load the pretrained weights
+model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/mobile_own7777_0613.pth.tar"))
 # model = models.mobilenet_v2()
 # model = MobileNeXt(num_classes=1248, width_mult=1.0, identity_tensor_multiplier=1.0)
 # model = mobilenet_v2()
 # model.classifier[1] = nn.Linear(1280, 1248)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'mobileon_9753'
+save_name = 'tinyown0615-[2,16,2,2,3][4,32,2,1,3][4,64,1,1,3][4,128,1,1,3]'
 # print(model)
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)
@@ -530,10 +534,10 @@ if __name__ == '__main__':
     all_test_loss = []
     all_test_acc = []
     for epoch in range(1, args.epochs + 1):
-        train(epoch, model, loss_fn=criterion)
-        train_loss, train_acc = train_evaluate(model)
-        all_train_acc.append(train_acc)
-        all_train_loss.append(train_loss)
+        # train(epoch, model, loss_fn=criterion)
+        # train_loss, train_acc = train_evaluate(model)
+        # all_train_acc.append(train_acc)
+        # all_train_loss.append(train_loss)
         test_loss, test_acc = test(model)
         all_test_loss.append(test_loss)
         all_test_acc.append(test_acc)

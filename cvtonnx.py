@@ -11,12 +11,13 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch.onnx as torch_onnx
 
-# model = models.resnet50()
+model = models.resnet50()
 # model = models.shufflenet_v2_x1_0()
 # model.classifier[1] = nn.Linear(1280,220)
 # model.fc=nn.Linear(1024,220)
-model = models.mobilenet_v2()
+# model = models.mobilenet_v2()
 # from moblienet_new import mobilenet_v2
+import ownTiny0615
 from net0613 import mbv2_ca0613
 
 # model = mobilenet_v2()
@@ -25,7 +26,7 @@ from net0613 import mbv2_ca0613
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)
 # model.conv1[0] = nn.Conv2d(4, 24, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-
+# model = ownTiny0615.mobilenet_v2()
 # model = models.resnet50()
 # model.fc=nn.Linear(2048,1248)
 # model.conv1 = nn.Conv2d(4, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
@@ -38,10 +39,10 @@ print(model)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
 # model.conv1 = nn.Conv2d(4, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 # model = torch.nn.DataParallel(model)
-# checkpoint = torch.load("/home/kai/Desktop/AlpineProject/mobile_own_0613.pth.tar")
+# checkpoint = torch.load("/home/kai/Desktop/AlpineProject/tinyown0615_2211.pth.tar")
 # model.load_state_dict(checkpoint)
 input_shape = (3, 224, 224)
-model_onnx_path = "mobilenet_v2_random.onnx"
+model_onnx_path = "resnet50_random.onnx"
 # if isinstance(model, torch.nn.DataParallel):
         # model = model.module
 model.train(False)

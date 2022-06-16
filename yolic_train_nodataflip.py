@@ -220,17 +220,20 @@ steps_per_epoch = len(train_loader)
 import torchvision.models as models
 
 # model = mobilenet_v2()  # resnet.resnet18()#
-# model = models.mobilenet_v2()
-model = MBV2_CA()
+model = models.resnet50()
+# model = MBV2_CA()
 # model = MobileNeXt(num_classes=1248, width_mult=1.0, identity_tensor_multiplier=1.0)
 # model = mobilenet_v2()
-model.classifier[1] = nn.Linear(1280, 1248)
+# model.classifier[1] = nn.Linear(1280, 1248)
+# load the pretrained weights
+# model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/mobilenet_v2_withNoFlipData.pth.tar"))
+
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'MBV2_CA'
+save_name = 'resnet50'
 # criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=0, clip=0.05, eps=1e-8, disable_torch_grad_focal_loss=True)
 # print(model)
 # model = models.shufflenet_v2_x2_0()
-# model.fc=nn.Linear(2048,1248)
+model.fc=nn.Linear(2048,1248)
 # model.conv1[0] = nn.Conv2d(4, 24, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
 
 # from mixnet import MixNet

@@ -22,7 +22,7 @@ class ConvNormActivation(torch.nn.Sequential):
             padding: Optional[int] = None,
             groups: int = 1,
             norm_layer: Optional[Callable[..., torch.nn.Module]] = torch.nn.GroupNorm,
-            activation_layer: Optional[Callable[..., torch.nn.Module]] = torch.nn.GELU,
+            activation_layer: Optional[Callable[..., torch.nn.Module]] = torch.nn.ReLU,
             dilation: int = 1,
             inplace: bool = True,
             groups_norm: int = 16,
@@ -32,7 +32,7 @@ class ConvNormActivation(torch.nn.Sequential):
         layers = [torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding,
                                   dilation=dilation, groups=groups, bias=norm_layer is None)]
         if norm_layer is not None:
-            layers.append(norm_layer(groups_norm, out_channels))
+            layers.append(norm_layer(out_channels))
         if activation_layer is not None:
             layers.append(activation_layer())
         super().__init__(*layers)
@@ -71,7 +71,7 @@ class _DeprecatedConvBNAct(ConvNormActivation):
         if kwargs.get("norm_layer", None) is None:
             kwargs["norm_layer"] = nn.GroupNorm
         if kwargs.get("activation_layer", None) is None:
-            kwargs["activation_layer"] = nn.GELU
+            kwargs["activation_layer"] = nn.ReLU
         super().__init__(*args, **kwargs)
 
 
@@ -89,7 +89,7 @@ class InvertedResidual(nn.Module):
 
 
         if norm_layer is None:
-            norm_layer = nn.GroupNorm
+            norm_layer = nn.BatchNorm2d
 
         hidden_dim = inp // expand_ratio
         if hidden_dim < oup / 6.:
@@ -164,7 +164,7 @@ class MobileNetV2(nn.Module):
             block = InvertedResidual
 
         if norm_layer is None:
-            norm_layer = nn.GroupNorm
+            norm_layer = nn.BatchNorm2d
 
         input_channel = 64
         last_channel = 12
@@ -172,10 +172,10 @@ class MobileNetV2(nn.Module):
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s, k
-                [2, 32, 3, 2, 7],
-                [4, 64, 3, 1, 7],
-                [4, 128, 9, 1, 7],
-                [4, 256, 3, 1, 7],
+                [2, 16, 2, 2, 3],
+                [4, 32, 2, 1, 3],
+                [4, 64, 1, 1, 3],
+                [4, 128, 1, 1, 3],
             ]
         # [2, 96, 1, 2],
         # [6, 144, 1, 1],
@@ -193,7 +193,7 @@ class MobileNetV2(nn.Module):
         input_channel = _make_divisible(input_channel * width_mult, round_nearest)
         self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
         stem: List[nn.Module] = [ConvNormActivation(3, input_channel, stride=4, norm_layer=norm_layer, kernel_size=4,
-                                                    activation_layer=nn.GELU)]
+                                                    activation_layer=nn.ReLU)]
         # self.stem = nn.ModuleList([
         #     ConvNormActivation(in_channels=input_channel, out_channels=3, kernel_size=3, stride=2, padding=1, groups=1),
         #     ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=1, padding=1, groups=3),
@@ -314,10 +314,10 @@ def mobilenet_v2(pretrained: bool = False, progress: bool = True, **kwargs: Any)
 
 if __name__ == '__main__':
     from ptflops import get_model_complexity_info
-    from torchstat import stat
+
     import torchvision.models as models
     net = mobilenet_v2()  # resnet.resnet18()#
-    # net = models.resnet50()
+    # net  = models.mobilenet_v2()
     print(net)
     inp = torch.rand((8, 3, 224, 224))
     out = net(inp)
@@ -325,4 +325,3 @@ if __name__ == '__main__':
                                              print_per_layer_stat=True, verbose=False)
     print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
-    stat(net, (3, 224, 224))
