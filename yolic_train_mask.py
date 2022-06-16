@@ -31,7 +31,7 @@ from torch.cuda.amp import autocast as autocast
 from torch.cuda.amp import GradScaler as GradScaler
 
 import moblienet_mask
-import moblienet_new
+import yolicNet
 from mobilenext import MobileNeXt
 from ownTiny0615 import mobilenet_v2
 from net0613 import mbv2_ca0613

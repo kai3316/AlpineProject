@@ -314,15 +314,17 @@ def mobilenet_v2(pretrained: bool = False, progress: bool = True, **kwargs: Any)
 
 if __name__ == '__main__':
     from ptflops import get_model_complexity_info
-    from torchstat import stat
+    from torchinfo import summary
+    # from torchstat import stat
     import torchvision.models as models
     net = mobilenet_v2()  # resnet.resnet18()#
     # net = models.resnet50()
     print(net)
     inp = torch.rand((8, 3, 224, 224))
     out = net(inp)
-    macs, params = get_model_complexity_info(net, (3, 224, 224), as_strings=True,
-                                             print_per_layer_stat=True, verbose=False)
-    print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
-    print('{:<30}  {:<8}'.format('Number of parameters: ', params))
-    stat(net, (3, 224, 224))
+    # macs, params = get_model_complexity_info(net, (3, 224, 224), as_strings=True,
+    #                                          print_per_layer_stat=True, verbose=False)
+    # print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    # print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+    # stat(net, (3, 224, 224))
+    print(summary(net, input_size=(1, 3, 224, 224)))

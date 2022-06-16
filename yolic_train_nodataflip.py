@@ -34,7 +34,7 @@ from torch.cuda.amp import GradScaler as GradScaler
 from AsymmetricLoss import AsymmetricLoss
 from mbv2_ca import MBV2_CA
 from mobilenext import MobileNeXt
-from moblienet_new import mobilenet_v2
+from yolicNet import mobilenet_v2
 
 parser = argparse.ArgumentParser(description='PyTorch Example')
 parser.add_argument('--batch_size', type=int, default=32, metavar='N',
