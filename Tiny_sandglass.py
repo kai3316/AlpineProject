@@ -21,8 +21,8 @@ class ConvNormActivation(torch.nn.Sequential):
             stride: int = 1,
             padding: Optional[int] = None,
             groups: int = 1,
-            norm_layer: Optional[Callable[..., torch.nn.Module]] = torch.nn.GroupNorm,
-            activation_layer: Optional[Callable[..., torch.nn.Module]] = torch.nn.GELU,
+            norm_layer: Optional[Callable[..., torch.nn.Module]] = torch.nn.BatchNorm2d,
+            activation_layer: Optional[Callable[..., torch.nn.Module]] = torch.nn.ReLU,
             dilation: int = 1,
             inplace: bool = True,
             groups_norm: int = 16,
@@ -32,7 +32,7 @@ class ConvNormActivation(torch.nn.Sequential):
         layers = [torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding,
                                   dilation=dilation, groups=groups, bias=norm_layer is None)]
         if norm_layer is not None:
-            layers.append(norm_layer(groups_norm, out_channels))
+            layers.append(norm_layer(out_channels))
         if activation_layer is not None:
             layers.append(activation_layer())
         super().__init__(*layers)
@@ -69,14 +69,68 @@ class _DeprecatedConvBNAct(ConvNormActivation):
             "The ConvBNReLU/ConvBNActivation classes are deprecated and will be removed in future versions. "
             "Use torchvision.ops.misc.ConvNormActivation instead.", FutureWarning)
         if kwargs.get("norm_layer", None) is None:
-            kwargs["norm_layer"] = nn.GroupNorm
+            kwargs["norm_layer"] = nn.BatchNorm2d
         if kwargs.get("activation_layer", None) is None:
-            kwargs["activation_layer"] = nn.GELU
+            kwargs["activation_layer"] = nn.ReLU
         super().__init__(*args, **kwargs)
 
 
 ConvBNReLU = _DeprecatedConvBNAct
 ConvBNActivation = _DeprecatedConvBNAct
+
+
+class SandGlass(nn.Module):
+    def __init__(self, inp, oup, stride, expand_ratio, identity_tensor_multiplier=1.0, norm_layer=None, keep_3x3=False, dwKernel_size=7):
+        super(SandGlass, self).__init__()
+        self.stride = stride
+        assert stride in [1, 2]
+        self.use_identity = False if identity_tensor_multiplier==1.0 else True
+        self.identity_tensor_channels = int(round(inp*identity_tensor_multiplier))
+
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+
+        hidden_dim = inp // expand_ratio
+        if hidden_dim < oup /6.:
+            hidden_dim = math.ceil(oup / 6.)
+            hidden_dim = _make_divisible(hidden_dim, 16)
+
+        self.use_res_connect = self.stride == 1 and inp == oup
+
+        layers = []
+        # dw
+        if expand_ratio == 2 or inp==oup or keep_3x3:
+            layers.append(ConvBNReLU(inp, inp, kernel_size=dwKernel_size, padding=dwKernel_size//2, stride=1, groups=inp, norm_layer=norm_layer, activation_layer=None))
+        if expand_ratio != 1:
+            # pw-linear
+            layers.extend([
+                nn.Conv2d(inp, hidden_dim, kernel_size=1, stride=1, padding=0, groups=1, bias=False),
+                # norm_layer(hidden_dim),
+            ])
+        layers.extend([
+            # pw
+            ConvBNReLU(hidden_dim, oup, kernel_size=1, stride=1, groups=1, norm_layer=norm_layer),
+        ])
+        if expand_ratio == 2 or inp==oup or keep_3x3 or stride==2:
+            layers.extend([
+            # dw-linear
+            nn.Conv2d(oup, oup, kernel_size=dwKernel_size, padding=dwKernel_size//2, stride=stride, groups=oup, bias=False),
+            # norm_layer(oup),
+        ])
+        self.conv = nn.Sequential(*layers)
+
+    def forward(self, x):
+        out = self.conv(x)
+        if self.use_res_connect:
+            if self.use_identity:
+                identity_tensor= x[:,:self.identity_tensor_channels,:,:] + out[:,:self.identity_tensor_channels,:,:]
+                out = torch.cat([identity_tensor, out[:,self.identity_tensor_channels:,:,:]], dim=1)
+                # out[:,:self.identity_tensor_channels,:,:] += x[:,:self.identity_tensor_channels,:,:]
+            else:
+                out = x + out
+            return out
+        else:
+            return out
 
 
 class InvertedResidual(nn.Module):
@@ -89,7 +143,7 @@ class InvertedResidual(nn.Module):
 
 
         if norm_layer is None:
-            norm_layer = nn.GroupNorm
+            norm_layer = nn.BatchNorm2d
 
         hidden_dim = inp // expand_ratio
         if hidden_dim < oup / 6.:
@@ -101,7 +155,7 @@ class InvertedResidual(nn.Module):
         layers = []
         # dw
         if expand_ratio == 2 or inp == oup or keep_3x3:
-            layers.append(ConvBNReLU(inp, inp, kernel_size=dwKernel_size,padding=dwKernel_size//2, stride=1, groups=inp, norm_layer=norm_layer, activation_layer=None))
+            layers.append(ConvBNReLU(inp, inp, kernel_size=dwKernel_size, padding=dwKernel_size//2, stride=1, groups=inp, norm_layer=norm_layer, activation_layer=None))
         if expand_ratio != 1:
             # pw-linear
             layers.extend([
@@ -123,13 +177,7 @@ class InvertedResidual(nn.Module):
     def forward(self, x):
         out = self.conv(x)
         if self.use_res_connect:
-            if self.use_identity:
-                identity_tensor = x[:, :self.identity_tensor_channels, :, :] + out[:, :self.identity_tensor_channels, :,
-                                                                               :]
-                out = torch.cat([identity_tensor, out[:, self.identity_tensor_channels:, :, :]], dim=1)
-                # out[:,:self.identity_tensor_channels,:,:] += x[:,:self.identity_tensor_channels,:,:]
-            else:
-                out = x + out
+            out = x + out
             return out
         else:
             return out
@@ -161,10 +209,10 @@ class MobileNetV2(nn.Module):
         super(MobileNetV2, self).__init__()
 
         if block is None:
-            block = InvertedResidual
+            block = SandGlass
 
         if norm_layer is None:
-            norm_layer = nn.GroupNorm
+            norm_layer = nn.BatchNorm2d
 
         input_channel = 64
         last_channel = 12
@@ -172,10 +220,10 @@ class MobileNetV2(nn.Module):
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s, k
-                [2, 32, 3, 2, 9],
-                [4, 64, 3, 1, 7],
-                [4, 128, 9, 1, 5],
-                [4, 256, 3, 1, 3],
+                [2, 16, 2, 2, 3],
+                [4, 32, 2, 1, 3],
+                [4, 64, 1, 1, 3],
+                [4, 128, 1, 1, 3],
             ]
         # [2, 96, 1, 2],
         # [6, 144, 1, 1],
@@ -193,7 +241,7 @@ class MobileNetV2(nn.Module):
         input_channel = _make_divisible(input_channel * width_mult, round_nearest)
         self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
         stem: List[nn.Module] = [ConvNormActivation(3, input_channel, stride=4, norm_layer=norm_layer, kernel_size=4,
-                                                    activation_layer=nn.GELU)]
+                                                    activation_layer=nn.ReLU)]
         # self.stem = nn.ModuleList([
         #     ConvNormActivation(in_channels=input_channel, out_channels=3, kernel_size=3, stride=2, padding=1, groups=1),
         #     ConvNormActivation(in_channels=3, out_channels=3, kernel_size=3, stride=1, padding=1, groups=3),
@@ -265,7 +313,7 @@ class MobileNetV2(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.GroupNorm):
+            elif isinstance(m, nn.BatchNorm2d):
                 nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
             elif isinstance(m, nn.Linear):
@@ -322,9 +370,11 @@ if __name__ == '__main__':
     print(net)
     inp = torch.rand((8, 3, 224, 224))
     out = net(inp)
-    # macs, params = get_model_complexity_info(net, (3, 224, 224), as_strings=True,
-    #                                          print_per_layer_stat=True, verbose=False)
+    macs, params = get_model_complexity_info(net, (3, 224, 224), as_strings=True,
+                                             print_per_layer_stat=True, verbose=False)
     # print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
     # print('{:<30}  {:<8}'.format('Number of parameters: ', params))
     # stat(net, (3, 224, 224))
     print(summary(net, input_size=(1, 3, 224, 224)))
+    print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    print('{:<30}  {:<8}'.format('Number of parameters: ', params))

@@ -6,7 +6,8 @@ Created on Mon May  4 15:39:10 2020
 @author: Su
 """
 from multiprocessing import freeze_support
-
+from sklearn.metrics import confusion_matrix
+from sklearn import metrics
 from PIL import Image
 import argparse
 import numpy as np
@@ -27,10 +28,7 @@ import os.path
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
-from torch.cuda.amp import autocast as autocast
-from torch.cuda.amp import GradScaler as GradScaler
 
-import YolicNet_sandglass
 import moblienet_mask
 import yolicNet
 from mobilenext import MobileNeXt
@@ -38,9 +36,9 @@ from ownTiny0615 import mobilenet_v2
 from net0613 import mbv2_ca0613
 
 parser = argparse.ArgumentParser(description='PyTorch Example')
-parser.add_argument('--batch_size', type=int, default=64, metavar='N',
+parser.add_argument('--batch_size', type=int, default=1, metavar='N',
                     help='input batch size for training (default: 64)')
-parser.add_argument('--test_batch', type=int, default=64, metavar='N',
+parser.add_argument('--test_batch', type=int, default=1, metavar='N',
                     help='input batch size for testing (default: 64)')
 parser.add_argument('--epochs', type=int, default=200, metavar='N',
                     help='number of epochs to train (default: 10)')
@@ -220,15 +218,15 @@ import torchvision.models as models
 
 # model = mbv2_ca0613()  # resnet.resnet18()#
 features_map = (28, 28)
-model = YolicNet_sandglass.mobilenet_v2()
+model = yolicNet.mobilenet_v2()
 # load the pretrained weights
-# model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/mobile_own7777_0613.pth.tar"))
+model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/mobile_own7777_0613.pth.tar"))
 # model = models.mobilenet_v2()
 # model = MobileNeXt(num_classes=1248, width_mult=1.0, identity_tensor_multiplier=1.0)
 # model = mobilenet_v2()
 # model.classifier[1] = nn.Linear(1280, 1248)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'YolicNet_sandglass'
+save_name = 'tinyown0615-[2,16,2,2,3][4,32,2,1,3][4,64,1,1,3][4,128,1,1,3]'
 # print(model)
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)
@@ -280,63 +278,69 @@ criterion = nn.MultiLabelSoftMarginLoss()
 # weight = torch.tensor(weight).cuda()
 # criterion = get_weighted_loss(weight)
 
-best_correct = -999
+def pred_cm(original, predicted):
+    global cm_true
+    global cm_pred
+    global cm2_true
+    global cm2_pred
+    orig = original.detach().numpy()
+
+    pred_sigmoid = predicted.detach().numpy()
 
 
-def pred_acc(original, predicted, errornum):
-    pred = np.array(predicted)
-    orig = np.array(original)
-    num = 0
-    enum = 0
+
+    # pred = torch.round(predicted).detach().numpy()
+    pred = np.where(pred_sigmoid > 0.5, 1, 0)
+    orig, pred, pred_sigmoid = masktoLabel(orig, pred, pred_sigmoid)
+    orig = np.concatenate(orig).tolist()
+    pred = np.concatenate(pred).tolist()
+    pred_sigmoid = np.concatenate(pred_sigmoid).tolist()
     normal = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
-    for cell in range(0, 1248, 12):
-        if (orig[cell:cell + 12] == pred[cell:cell + 12]).all():
-            num = num + 1
+    for i in range(0, 1248, 12):
+    # for i in range(0, 384, 12):  # 2-6m
+    # for i in range(384, 768, 12): #  1-2m
+    # for i in range(768, 1152, 12):  #  0-1m
+        cell_ture = np.argmax(orig[i:i + 12])
+
+        cell_pred = np.argmax(pred_sigmoid[i:i + 12])
+        # cell_pred = np.argmax(pred[i:i + 12])
+
+        if cell_pred == 11 and not (pred[i:i + 12] == normal).all():
+            # print("find", pred[i:i + 12])
+            cell_pred = np.argsort(pred_sigmoid[i:i + 12])[-2]
+        #     # print(cell_pred)
+        # if cell_pred == 11:
+        #     print(pred[i:i + 12])
+        # if cell_pred ==1:
+        #     print(pred[i:i+12])
+
+        for j in range(0, 11):
+            if orig[i:i + 12][j] == pred[i:i + 12][j] and orig[i:i + 12][j] != 0:
+                # print(orig[i:i + 12])
+                # print(pred[i:i + 12])
+                cell_ture = j
+                cell_pred = j
+                break
+        # if cell_pred == 11: cell_pred = 10
+        # if cell_ture == 11: cell_ture = 10
+
+        cm_true.append(cell_ture)
+        cm_pred.append(cell_pred)
+
+        if (orig[i:i + 12] == normal).all():
+            cm2_true.append(1)
         else:
-            if not (orig[cell:cell + 12] == normal).all() and not (pred[cell:cell + 12] == normal).all():
-                if errornum == -1:
-                    enum = enum + 1
-                # else:
-                #     for j in range(0, 12):
-                #         if (orig[cell:cell + 12][j] == pred[cell:cell + 12][j]) and not orig[cell:cell + 12][j] == 0:
-                #             # num = num + 1
-                #             pass
-    if errornum == -1:
-        return (num + enum) / 104
-    if errornum == 0:
-        return num / 104
-    # if errornum==0:
-    # return torch.round(predicted).eq(original).sum().numpy()/len(original)
+            cm2_true.append(0)
 
+        if (pred[i:i + 12] == normal).all():
 
-def train(epoch, model, loss_fn):
-    model.train()
-    for batch_idx, (data, target, filenames) in enumerate(train_loader):
-        if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data), Variable(target)
-        optimizer.zero_grad()
-        # with autocast():
-        output = model(data)
-        # print(output.shape, target.shape)
-        target = torch.nn.functional.interpolate(target, size=features_map, mode='nearest')
-
-        loss = loss_fn(output, target)
-        # print(loss)
-        # loss = F.softmax(output, target)
-        # loss = F.cross_entropy(output, target)
-        loss.backward()
-        # scaler.scale(loss).backward()
-        # scaler.step(optimizer)
-        # scaler.update()
-        optimizer.step()
-        # pred = output.data.max(1, keepdim=True)[1]
-
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.10f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                       100. * batch_idx / len(train_loader), loss.item()))
-
+            cm2_pred.append(1)
+        else:
+            cm2_pred.append(0)
+            # if(cell_ture==10):
+        #     print(cell_ture)
+        #     print(cell_pred)
+        #     print(" ")
 
 points_list = [(288, 166), (322, 166), (356, 166), (390, 166), (424, 166), (458, 166), (492, 166), (526, 166),
                (220, 200), (254, 200), (288, 200), (322, 200), (356, 200), (390, 200), (424, 200), (458, 200),
@@ -410,13 +414,13 @@ box_list = [[points_list[0], points_list[11]], [points_list[1], points_list[12]]
 # print(len(box_list))
 
 
-def masktoLabel(targetImg, d):
-    targetImg = targetImg.detach().numpy()
-    d = d.detach().numpy()
+def masktoLabel(targetImg, d, m ):
+
     oh, ow = features_map
     # print(oh, ow)
     targetlist = []
     dlist = []
+    mlist = []
     for box in box_list:
         # h_min = round(int(box[0][1])/480*h)
         # w_min = round(int(box[0][0])/848*w)
@@ -431,56 +435,23 @@ def masktoLabel(targetImg, d):
         targetlist.append(newtarget)
         newd = d[:, h, w]
         dlist.append(newd)
+        newm = m[:, h, w]
+        mlist.append(newm)
     # print(dlist)
     # print(targetlist)
-    return targetlist, dlist
+    return targetlist, dlist, mlist
     # pass
 
-
-def train_evaluate(model):
-    model.eval()
-    running_loss = []
-    running_acc = []
-    running_acc2 = []
-    global best_correct
-    for batch_idx, (data, target, filenames) in enumerate(train_loader):
-        if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data), Variable(target)
-        target = torch.nn.functional.interpolate(target, size=features_map, mode='nearest')
-        output = model(data)
-        loss = criterion(output, target)
-        output = torch.round(torch.sigmoid(output))
-        # print(output)
-        acc_ = []
-        for i, d in enumerate(output):
-            label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
-            acc = pred_acc(label_target, d, 0)
-            acc_.append(acc)
-
-        acc_2 = []
-        for i, d in enumerate(output):
-            label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
-            acc = pred_acc(label_target, d, -1)
-            acc_2.append(acc)
-        running_loss.append(loss.item())
-        running_acc.append(np.asarray(acc_).mean())
-        running_acc2.append(np.asarray(acc_2).mean())
-    total_loss = np.asarray(running_loss).mean()
-    total_acc = np.asarray(running_acc).mean()
-    total_acc2 = np.asarray(running_acc2).mean()
-    print('\nTrain set: total_batch_loss: {:.4f}, total imgs: {} , Acc: ({:.4f}%), 2ACC: ({:.4f}%)\n'.format(
-        total_loss, len(train_loader.dataset), total_acc, total_acc2))
-    now_correct = total_acc
-    if best_correct < now_correct:
-        best_correct = now_correct
-        best_model_wts = copy.deepcopy(model.state_dict())
-        torch.save(best_model_wts,
-                   os.path.join(os.getcwd(), save_name + ".pth.tar"))
-        print("New weight!")
-    return total_loss, total_acc
-
-
+testLoss_list = []
+cm_true = []
+cm_pred = []
+cm2_true = []
+cm2_pred = []
+cost1_all = []
+cost2_all = []
+cost3_all = []
+filename_list = []
+count = 0
 def test(model):
     model.eval()
     running_loss = []
@@ -494,60 +465,85 @@ def test(model):
         data, target = Variable(data), Variable(target)
         target = torch.nn.functional.interpolate(target, size=features_map, mode='nearest')
         output = model(data).float()
-        loss = criterion(output, target)
-        output = torch.round(torch.sigmoid(output))
+        # loss = criterion(output, target)
+        # output = torch.round(torch.sigmoid(output))
+        output = torch.sigmoid(output)
+        pred_cm(torch.Tensor.cpu(target[0]), torch.Tensor.cpu(output[0]))
 
-        acc_ = []
-        for i, d in enumerate(output):
-            label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
-            acc = pred_acc(label_target, d, 0)
-            acc_.append(acc)
-
-        acc_2 = []
-        for i, d in enumerate(output):
-            label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
-            acc = pred_acc(label_target, d, -1)
-            acc_2.append(acc)
-        running_loss.append(loss.item())
-        running_acc.append(np.asarray(acc_).mean())
-        running_acc2.append(np.asarray(acc_2).mean())
-    total_loss = np.asarray(running_loss).mean()
-    total_acc = np.asarray(running_acc).mean()
-    total_acc2 = np.asarray(running_acc2).mean()
-    print('\nTest set: total_batch_loss: {:.4f}, total imgs: {} , Acc: ({:.4f}%), 2classAcc: ({:.4f}%)\n'.format(
-        total_loss, len(test_loader.dataset), total_acc, total_acc2))
     # now_correct = total_batch_acc
     # if best_correct < now_correct:
     #     best_correct = now_correct
     #     best_model_wts = copy.deepcopy(model.state_dict())
     #     torch.save(best_model_wts, os.path.join(os.getcwd(), "mobilenetv2_fp16_34294rgbd_1248output.pth.tar"))
     #     print("New weight!")
-    return total_loss, total_acc
 
 
-if __name__ == '__main__':
-    # freeze_support()
-    import datetime
+import matplotlib.pyplot as plt
+import itertools
 
-    start_time = datetime.datetime.now()
-    all_train_loss = []
-    all_train_acc = []
-    all_test_loss = []
-    all_test_acc = []
-    for epoch in range(1, args.epochs + 1):
-        train(epoch, model, loss_fn=criterion)
-        train_loss, train_acc = train_evaluate(model)
-        all_train_acc.append(train_acc)
-        all_train_loss.append(train_loss)
-        test_loss, test_acc = test(model)
-        all_test_loss.append(test_loss)
-        all_test_acc.append(test_acc)
-    list_res = []
-    for i in range(len(all_train_loss)):
-        list_res.append([all_train_loss[i], all_train_acc[i], all_test_loss[i], all_test_acc[i]])
 
-    column_name = ['train_loss', 'train_acc', 'test_loss', 'test_acc']
-    csv_name = save_name + '.csv'
-    xml_df = pd.DataFrame(list_res, columns=column_name)
-    xml_df.to_csv(csv_name, index=None)
-    print("--- %s seconds ---" % (datetime.datetime.now() - start_time))
+def plot_confusion_matrix(cm, classes,
+                          normalize=False,
+                          title='Confusion matrix',
+                          cmap=plt.cm.Blues):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+
+    cm_normalize = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+
+    plt.imshow(cm_normalize, interpolation='nearest', cmap=cmap)
+    plt.title(title, fontsize=16)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+
+    fmt = '.4f' if normalize else 'd'
+    thresh = cm_normalize.max() / 2.
+    for i, j in itertools.product(range(cm_normalize.shape[0]), range(cm_normalize.shape[1])):
+        plt.text(j, i-0.1, format(cm_normalize[i, j], fmt),
+                 horizontalalignment="center",
+                 color="white" if cm_normalize[i, j] > thresh else "black")
+        plt.text(j, i+0.2, format(cm[i, j], 'd'),
+                 horizontalalignment="center",
+                 color="white" if cm_normalize[i, j] > thresh else "black")
+    plt.ylabel('True label', fontsize=18)
+    plt.xlabel('Predicted label', fontsize=18)
+    plt.tight_layout()
+
+
+# from shutil import copyfile
+test(model)
+#
+class_names = ["Bump", "Column", "Dent", "Fence", "Creature", "Vehicle", "Wall", "Weed", "ZebraCrossing", "TrafficCone",
+               "TrafficSign", 'Normal']
+# class_names = ["Bump", "Column", "Dent", "Fence", "Creature", "Vehicle", "Wall", "Weed", "ZebraCrossing", "TrafficCone",
+#                "Normal"]
+title_name = 'yolic'
+print(metrics.classification_report(cm_true, cm_pred, target_names=class_names, digits=4))
+
+class2_names = ["Risk", "Normal"]
+print(metrics.classification_report(cm2_true, cm2_pred, target_names=class2_names, digits=4))
+
+matrix = confusion_matrix(cm_true, cm_pred)
+matrix2 = confusion_matrix(cm2_true, cm2_pred)
+plt.figure(figsize=(10, 10))
+
+plot_confusion_matrix(matrix, classes=class_names, normalize=True, title=title_name)
+plt.show()
+# plt.savefig( 'Confusion Matrix.png')
+plt.close()
+
+plt.figure(figsize=(5, 5))
+
+plot_confusion_matrix(matrix2, classes=class2_names, normalize=True, title=title_name)
+plt.show()
+# plt.savefig( 'oConfusion Matrix .png')
+plt.close()
+
+
+
+
+
