@@ -32,6 +32,7 @@ from torch.cuda.amp import GradScaler as GradScaler
 
 import YolicNet_sandglass
 import moblienet_mask
+import ownTiny0615
 import yolicNet
 from mobilenext import MobileNeXt
 from ownTiny0615 import mobilenet_v2
@@ -133,7 +134,7 @@ class MultiLabelRGBataSet(torch.utils.data.Dataset):
         # if np.random.random() > 0.5:
         #     img = img.transpose(Image.FLIP_LEFT_RIGHT)
         #     labelimg = np.fliplr(labelimg).copy()
-            # print(labelimg.shape)
+        # print(labelimg.shape)
 
         # print(ipath)
         if self.transform is not None:
@@ -220,15 +221,16 @@ import torchvision.models as models
 
 # model = mbv2_ca0613()  # resnet.resnet18()#
 features_map = (28, 28)
-model = YolicNet_sandglass.mobilenet_v2()
+# model = YolicNet_sandglass.mobilenet_v2()
+model = ownTiny0615.mobilenet_v2()
 # load the pretrained weights
-# model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/mobile_own7777_0613.pth.tar"))
+# model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/tinyown0615-[2,16,1,2,3][6,32,1,1,3][6,64,1,1,3][6,128,1,1,3].pth.tar"))
 # model = models.mobilenet_v2()
 # model = MobileNeXt(num_classes=1248, width_mult=1.0, identity_tensor_multiplier=1.0)
 # model = mobilenet_v2()
 # model.classifier[1] = nn.Linear(1280, 1248)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'YolicNet_sandglass'
+save_name = 'ownTiny0615'
 # print(model)
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)
@@ -284,8 +286,8 @@ best_correct = -999
 
 
 def pred_acc(original, predicted, errornum):
-    pred = np.array(predicted)
-    orig = np.array(original)
+    pred = np.array(predicted).flatten()
+    orig = np.array(original).flatten()
     num = 0
     enum = 0
     normal = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
@@ -407,6 +409,7 @@ box_list = [[points_list[0], points_list[11]], [points_list[1], points_list[12]]
             [points_list[133], points_list[141]], [points_list[134], points_list[142]],
             [points_list[135], points_list[143]], [points_list[136], points_list[144]]]
 
+
 # print(len(box_list))
 
 
@@ -500,13 +503,25 @@ def test(model):
         acc_ = []
         for i, d in enumerate(output):
             label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
+            # print(filenames[i])
+            # loadtxt from file 'filename[i]'
+            # a = np.loadtxt(os.path.join("/home/kai/Desktop/data_noflip/label_noflip", filenames[i] + '.txt'))
+            # b = np.array(label_target).flatten()
+
             acc = pred_acc(label_target, d, 0)
+            # acc1 = pred_acc(a, d, 0)
+            #
+            # print(acc,acc1)
             acc_.append(acc)
 
         acc_2 = []
         for i, d in enumerate(output):
             label_target, d = masktoLabel(torch.Tensor.cpu(target[i]), torch.Tensor.cpu(d))
+            # a = np.loadtxt(os.path.join("/home/kai/Desktop/data_noflip/label_noflip", filenames[i] + '.txt'))
+            # b = np.array(label_target).flatten()
+            # print((a == b).all())
             acc = pred_acc(label_target, d, -1)
+            # acc = pred_acc(label_target, d, -1)
             acc_2.append(acc)
         running_loss.append(loss.item())
         running_acc.append(np.asarray(acc_).mean())
