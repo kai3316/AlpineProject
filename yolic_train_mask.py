@@ -30,6 +30,7 @@ import os
 from torch.cuda.amp import autocast as autocast
 from torch.cuda.amp import GradScaler as GradScaler
 
+import Tiny_sandglass
 import YolicNet_sandglass
 import moblienet_mask
 import ownTiny0615
@@ -224,13 +225,14 @@ features_map = (28, 28)
 # model = YolicNet_sandglass.mobilenet_v2()
 model = ownTiny0615.mobilenet_v2()
 # load the pretrained weights
-# model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/tinyown0615-[2,16,1,2,3][6,32,1,1,3][6,64,1,1,3][6,128,1,1,3].pth.tar"))
+# model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/ownTiny0615-64-512.pth.tar"))
 # model = models.mobilenet_v2()
 # model = MobileNeXt(num_classes=1248, width_mult=1.0, identity_tensor_multiplier=1.0)
 # model = mobilenet_v2()
 # model.classifier[1] = nn.Linear(1280, 1248)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'ownTiny0615'
+save_name = 'ownTiny0615-64-512_2211'
+
 # print(model)
 # model = models.shufflenet_v2_x2_0()
 # model.fc=nn.Linear(2048,1248)

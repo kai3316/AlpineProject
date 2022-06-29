@@ -172,12 +172,12 @@ class MobileNetV2(nn.Module):
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s, k
-                [2, 16, 2, 2, 3],
-                [4, 32, 2, 1, 3],
-                [4, 64, 1, 1, 3],
-                [4, 128, 1, 1, 3],
+                [2, 64, 2, 2, 7],
+                [6, 128, 2, 1, 7],
+                [6, 256, 1, 1, 7],
+                [6, 512, 1, 1, 7],
             ]
-        # [2, 96, 1, 2],
+        # [2, 96, 1, 2], 2342
         # [6, 144, 1, 1],
         # [6, 192, 3, 2],
         # [6, 288, 3, 2],
@@ -319,8 +319,8 @@ if __name__ == '__main__':
     net = mobilenet_v2()  # resnet.resnet18()#
     # net  = models.mobilenet_v2()
     print(net)
-    inp = torch.rand((8, 3, 224, 224))
-    out = net(inp)
+    # inp = torch.rand((8, 3, 224, 224))
+    # out = net(inp)
     macs, params = get_model_complexity_info(net, (3, 224, 224), as_strings=True,
                                              print_per_layer_stat=True, verbose=False)
     print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
