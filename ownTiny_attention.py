@@ -8,7 +8,7 @@ from torch import nn
 from torch import Tensor
 
 from typing import Callable, Any, Optional, List
-
+from coordatt import CoordAtt
 from torch.hub import load_state_dict_from_url
 
 
@@ -101,7 +101,9 @@ class InvertedResidual(nn.Module):
         layers = []
         # dw
         if expand_ratio == 2 or inp == oup or keep_3x3:
+
             layers.append(ConvBNReLU(inp, inp, kernel_size=dwKernel_size,padding=dwKernel_size//2, stride=1, groups=inp, norm_layer=norm_layer, activation_layer=None))
+            layers.append(CoordAtt(inp, inp))
         if expand_ratio != 1:
             # pw-linear
             layers.extend([
@@ -124,8 +126,7 @@ class InvertedResidual(nn.Module):
         out = self.conv(x)
         if self.use_res_connect:
             if self.use_identity:
-                identity_tensor = x[:, :self.identity_tensor_channels, :, :] + out[:, :self.identity_tensor_channels, :,
-                                                                               :]
+                identity_tensor = x[:, :self.identity_tensor_channels, :, :] + out[:, :self.identity_tensor_channels, :,:]
                 out = torch.cat([identity_tensor, out[:, self.identity_tensor_channels:, :, :]], dim=1)
                 # out[:,:self.identity_tensor_channels,:,:] += x[:,:self.identity_tensor_channels,:,:]
             else:
@@ -172,10 +173,10 @@ class MobileNetV2(nn.Module):
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s, k
-                [2, 128, 2, 2, 7],
-                [6, 256, 2, 1, 7],
-                [6, 512, 2, 1, 7],
-                [6, 1024, 2, 1, 7],
+                [2, 64, 2, 2, 13],
+                [6, 128, 2, 1, 13],
+                [6, 256, 2, 1, 13],
+                [6, 512, 2, 1, 13],
             ]
         # [2, 96, 1, 2], 2342
         # [6, 144, 1, 1],

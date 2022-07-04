@@ -34,6 +34,7 @@ import Tiny_sandglass
 import YolicNet_sandglass
 import moblienet_mask
 import ownTiny0615
+import ownTiny_attention
 import yolicNet
 from mobilenext import MobileNeXt
 from ownTiny0615 import mobilenet_v2
@@ -223,7 +224,7 @@ import torchvision.models as models
 # model = mbv2_ca0613()  # resnet.resnet18()#
 features_map = (28, 28)
 # model = YolicNet_sandglass.mobilenet_v2()
-model = ownTiny0615.mobilenet_v2()
+model = ownTiny_attention.mobilenet_v2()
 # load the pretrained weights
 # model.load_state_dict(torch.load("/home/kai/Desktop/AlpineProject/ownTiny0615-64-512.pth.tar"))
 # model = models.mobilenet_v2()
@@ -231,7 +232,7 @@ model = ownTiny0615.mobilenet_v2()
 # model = mobilenet_v2()
 # model.classifier[1] = nn.Linear(1280, 1248)
 # model.features[0][0] = nn.Conv2d(4, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-save_name = 'ownTiny0615-32-256_2222_4*13'
+save_name = 'ownTiny_attention-64-512_2222_4*13'
 
 # print(model)
 # model = models.shufflenet_v2_x2_0()
