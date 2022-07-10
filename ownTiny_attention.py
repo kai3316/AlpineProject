@@ -107,7 +107,7 @@ class InvertedResidual(nn.Module):
         if expand_ratio != 1:
             # pw-linear
             layers.extend([
-                nn.Conv2d(inp, hidden_dim, kernel_size=1, stride=1, padding=0, groups=1, bias=False),
+                nn.Conv2d(inp, hidden_dim, kernel_size=1, stride=1, padding=0, groups=1),
                 # norm_layer(num_channels, hidden_dim),
             ])
         layers.extend([
@@ -117,7 +117,8 @@ class InvertedResidual(nn.Module):
         if expand_ratio == 2 or inp == oup or keep_3x3 or stride == 2:
             layers.extend([
                 # dw-linear
-                nn.Conv2d(oup, oup, kernel_size=3, stride=stride, groups=oup, padding=1, bias=False),
+                nn.Conv2d(oup, oup, dwKernel_size, padding=dwKernel_size//2, stride=stride, groups=oup),
+                # nn.Conv2d(oup, oup, kernel_size=3, stride=stride, groups=oup, padding=1, bias=False),
                 # norm_layer(num_channels,oup),
             ])
         self.conv = nn.Sequential(*layers)
@@ -173,10 +174,10 @@ class MobileNetV2(nn.Module):
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s, k
-                [2, 64, 2, 2, 13],
-                [6, 128, 2, 1, 13],
-                [6, 256, 2, 1, 13],
-                [6, 512, 2, 1, 13],
+                [2, 64, 2, 2, 7],
+                [6, 128, 2, 1, 7],
+                [6, 256, 2, 1, 7],
+                [6, 512, 2, 1, 7],
             ]
         # [2, 96, 1, 2], 2342
         # [6, 144, 1, 1],
