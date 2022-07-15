@@ -102,7 +102,7 @@ class InvertedResidual(nn.Module):
         # dw
         if expand_ratio == 2 or inp == oup or keep_3x3:
 
-            layers.append(ConvBNReLU(inp, inp, kernel_size=dwKernel_size,padding=dwKernel_size//2, stride=1, groups=inp, norm_layer=norm_layer, activation_layer=None))
+            layers.append(ConvBNReLU(inp, inp, kernel_size=dwKernel_size,padding=dwKernel_size//2, stride=1, groups=inp, norm_layer=norm_layer, activation_layer=nn.ReLU))
             layers.append(CoordAtt(inp, inp))
         if expand_ratio != 1:
             # pw-linear
@@ -174,10 +174,10 @@ class MobileNetV2(nn.Module):
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s, k
-                [2, 64, 2, 2, 7],
-                [6, 128, 2, 1, 7],
+                [2, 128, 2, 2, 7],
                 [6, 256, 2, 1, 7],
                 [6, 512, 2, 1, 7],
+                [6, 1024, 2, 1, 7],
             ]
         # [2, 96, 1, 2], 2342
         # [6, 144, 1, 1],

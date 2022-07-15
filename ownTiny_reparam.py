@@ -85,13 +85,13 @@ class ReparamLargeKernelConv(nn.Module):
             # self.lkb_origin = conv_bn(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
             #                           stride=stride, padding=padding, dilation=1, groups=groups)
             self.lkb_origin = ConvBNReLU(in_channels = in_channels, out_channels = out_channels, kernel_size=kernel_size,
-                                         padding=padding, stride=stride, groups=groups, norm_layer=None, activation_layer=None)
+                                         padding=padding, stride=stride, groups=groups, norm_layer=nn.BatchNorm2d, activation_layer=None)
             if small_kernel is not None:
                 assert small_kernel <= kernel_size, 'The kernel size for re-param cannot be larger than the large kernel!'
                 # self.small_conv = conv_bn(in_channels=in_channels, out_channels=out_channels, kernel_size=small_kernel,
                 #                              stride=stride, padding=small_kernel//2, groups=groups, dilation=1)
                 self.small_conv = ConvBNReLU(in_channels = in_channels, out_channels = out_channels, kernel_size=small_kernel,
-                                         padding=small_kernel//2, stride=stride, dilation=1, groups=groups, norm_layer=None, activation_layer=None)
+                                         padding=small_kernel//2, stride=stride, dilation=1, groups=groups, norm_layer=nn.BatchNorm2d, activation_layer=None)
 
     def forward(self, inputs):
         if hasattr(self, 'lkb_reparam'):
@@ -105,13 +105,20 @@ class ReparamLargeKernelConv(nn.Module):
         return out
 
     def get_equivalent_kernel_bias(self):
-        eq_k, eq_b = self.lkb_origin[0].weight, self.lkb_origin[0].bias
+        eq_k, eq_b = fuse_bn(self.lkb_origin[0], self.lkb_origin[1])
         if hasattr(self, 'small_conv'):
-            small_k, small_b = self.small_conv[0].weight, self.small_conv[0].bias
-            neweq_b = eq_b + small_b
+            small_k, small_b = fuse_bn(self.small_conv[0], self.small_conv[1])
+            eq_b += small_b
             #   add to the central part
-            neweq_k = eq_k + nn.functional.pad(small_k, [(self.kernel_size - self.small_kernel) // 2] * 4)
-        return neweq_k, neweq_b
+            eq_k += nn.functional.pad(small_k, [(self.kernel_size - self.small_kernel) // 2] * 4)
+        return eq_k, eq_b
+        # eq_k, eq_b = self.lkb_origin[0].weight, self.lkb_origin[0].bias
+        # if hasattr(self, 'small_conv'):
+        #     small_k, small_b = self.small_conv[0].weight, self.small_conv[0].bias
+        #     neweq_b = eq_b + small_b
+        #     #   add to the central part
+        #     neweq_k = eq_k + nn.functional.pad(small_k, [(self.kernel_size - self.small_kernel) // 2] * 4)
+        # return neweq_k, neweq_b
 
     def merge_kernel(self):
         eq_k, eq_b = self.get_equivalent_kernel_bias()
@@ -214,7 +221,7 @@ class InvertedResidual(nn.Module):
         if expand_ratio == 2 or inp == oup or keep_3x3:
             # layers.append(ConvBNReLU(inp, inp, kernel_size=dwKernel_size,padding=dwKernel_size//2, stride=1, groups=inp, norm_layer=norm_layer, activation_layer=None))
             layers.append(
-                ReparamLargeKernelConv(inp, inp, kernel_size=dwKernel_size, stride=1, groups=inp, small_kernel=3))
+                ReparamLargeKernelConv(inp, inp, kernel_size=dwKernel_size, stride=1, groups=inp, small_kernel=5))
         if expand_ratio != 1:
             # pw-linear
             layers.extend([
@@ -228,7 +235,7 @@ class InvertedResidual(nn.Module):
         if expand_ratio == 2 or inp == oup or keep_3x3 or stride == 2:
             layers.extend([
                 # dw-linear
-                ReparamLargeKernelConv(oup, oup, kernel_size=dwKernel_size, stride=stride, groups=oup, small_kernel=3),
+                ReparamLargeKernelConv(oup, oup, kernel_size=dwKernel_size, stride=stride, groups=oup, small_kernel=5),
                 # nn.Conv2d(oup, oup, kernel_size=3, stride=stride, groups=oup, padding=1, bias=False),
                 # norm_layer(num_channels,oup),
             ])
